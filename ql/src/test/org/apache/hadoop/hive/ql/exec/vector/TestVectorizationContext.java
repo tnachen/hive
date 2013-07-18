@@ -10,6 +10,7 @@ import java.util.Map;
 
 import org.apache.hadoop.hive.ql.exec.vector.expressions.FilterExprAndExpr;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.FilterExprOrExpr;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.StringSubstrColStart;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpression;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.DoubleColUnaryMinus;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.FilterDoubleColLessDoubleScalar;
@@ -33,12 +34,14 @@ import org.apache.hadoop.hive.ql.udf.UDFOPMod;
 import org.apache.hadoop.hive.ql.udf.UDFOPMultiply;
 import org.apache.hadoop.hive.ql.udf.UDFOPNegative;
 import org.apache.hadoop.hive.ql.udf.UDFOPPlus;
+import org.apache.hadoop.hive.ql.udf.UDFSubstr;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBridge;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPAnd;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPGreaterThan;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPLessThan;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPOr;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.junit.Test;
 
@@ -353,5 +356,25 @@ public class TestVectorizationContext {
     VectorExpression ve = vc.getVectorExpression(negExprDesc);
 
     assertTrue( ve instanceof DoubleColUnaryMinus);
+  }
+
+  @Test
+  public void testVectorizedSubstr() throws HiveException {
+    ExprNodeColumnDesc col1Expr = new ExprNodeColumnDesc(String.class, "col1", "table", false);
+    ExprNodeGenericFuncDesc substrExprDesc = new ExprNodeGenericFuncDesc();
+    GenericUDF gudf = new GenericUDFBridge("substr", false, UDFSubstr.class);
+    ObjectInspector[] inspectors = new ObjectInspector[3];
+    inspectors[0] = new ObjectInspector()
+    substrExprDesc.setGenericUDF(gudf);
+    List<ExprNodeDesc> children = new ArrayList<ExprNodeDesc>();
+    children.add(col1Expr);
+    substrExprDesc.setChildExprs(children);
+    Map<String, Integer> columnMap = new HashMap<String, Integer>();
+    columnMap.put("col1", 1);
+    VectorizationContext vc = new VectorizationContext(columnMap, 1);
+    vc.setOperatorType(OperatorType.SELECT);
+
+    VectorExpression ve = vc.getVectorExpression(substrExprDesc);
+    assertTrue(ve instanceof StringSubstrColStart);
   }
 }

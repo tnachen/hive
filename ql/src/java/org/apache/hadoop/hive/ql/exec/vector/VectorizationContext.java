@@ -85,6 +85,7 @@ import org.apache.hadoop.hive.ql.udf.UDFOPNegative;
 import org.apache.hadoop.hive.ql.udf.UDFOPPlus;
 import org.apache.hadoop.hive.ql.udf.UDFOPPositive;
 import org.apache.hadoop.hive.ql.udf.UDFSecond;
+import org.apache.hadoop.hive.ql.udf.UDFSubstr;
 import org.apache.hadoop.hive.ql.udf.UDFUpper;
 import org.apache.hadoop.hive.ql.udf.UDFWeekOfYear;
 import org.apache.hadoop.hive.ql.udf.UDFYear;
@@ -462,6 +463,8 @@ public class VectorizationContext {
       return getUnaryStringExpression("StringUpper", "String", childExpr);
     } else if (cl.equals(UDFLength.class)) {
       return getUnaryStringExpression("StringLength", "Long", childExpr);
+    } else if (cl.equals(UDFSubstr.class)) {
+      return getSubstringExpression(childExpr);
     }
 
     throw new HiveException("Udf: "+udf.getClass().getSimpleName()+", is not supported");
@@ -470,20 +473,52 @@ public class VectorizationContext {
   /* Return a unary string vector expression. This is used for functions like
    * UPPER() and LOWER().
    */
-  private VectorExpression getUnaryStringExpression(String vectorExprClassName, 
-      String resultType, // result type name
-      List<ExprNodeDesc> childExprList) throws HiveException {
-    
+  private VectorExpression getSubstringExpression(List<ExprNodeDesc> childExprList) throws HiveException {
+
     /* Create an instance of the class vectorExprClassName for the input column or expression result
      * and return it.
      */
-    
+
     ExprNodeDesc childExpr = childExprList.get(0);
     int inputCol;
     VectorExpression v1 = null;
     if (childExpr instanceof ExprNodeGenericFuncDesc) {
       v1 = getVectorExpression(childExpr);
       inputCol = v1.getOutputColumn();
+    } else if (childExpr instanceof ExprNodeColumnDesc) {
+      ExprNodeColumnDesc colDesc = (ExprNodeColumnDesc) childExpr;
+      inputCol = getInputColumnIndex(colDesc.getColumn());
+    } else {
+      // TODO? add code to handle constant argument case
+      throw new HiveException("Expression not supported: "+childExpr);
+    }
+
+    VectorExpression expr = null;
+    if (v1 != null) {
+      expr.setChildExpressions(new VectorExpression [] {v1});
+      ocm.freeOutputColumn(v1.getOutputColumn());
+    }
+    return expr;
+  }
+
+  /* Return a unary string vector expression. This is used for functions like
+   * UPPER() and LOWER().
+   */
+  private VectorExpression getUnaryStringExpression(String vectorExprClassName,
+      String resultType, // result type name
+      List<ExprNodeDesc> childExprList) throws HiveException {
+
+    /* Create an instance of the class vectorExprClassName for the input column or expression result
+     * and return it.
+     */
+
+    ExprNodeDesc childExpr = childExprList.get(0);
+    int inputCol;
+    VectorExpression v1 = null;
+    if (childExpr instanceof ExprNodeGenericFuncDesc) {
+      v1 = getVectorExpression(childExpr);
+      inputCol = v1.getOutputColumn();
+      colType = v1.getOutputType();
     } else if (childExpr instanceof ExprNodeColumnDesc) {
       ExprNodeColumnDesc colDesc = (ExprNodeColumnDesc) childExpr;
       inputCol = getInputColumnIndex(colDesc.getColumn());
@@ -517,23 +552,23 @@ public class VectorizationContext {
     VectorExpression expr = null;
     int inputCol;
     ExprNodeConstantDesc constDesc;
-    
+
     if ((leftExpr instanceof ExprNodeColumnDesc) &&
         (rightExpr instanceof ExprNodeConstantDesc) ) {
       ExprNodeColumnDesc leftColDesc = (ExprNodeColumnDesc) leftExpr;
       constDesc = (ExprNodeConstantDesc) rightExpr;
       inputCol = getInputColumnIndex(leftColDesc.getColumn());
-      expr = (VectorExpression) new FilterStringColLikeStringScalar(inputCol, 
-          new Text((byte[]) getScalarValue(constDesc)));  
+      expr = (VectorExpression) new FilterStringColLikeStringScalar(inputCol,
+          new Text((byte[]) getScalarValue(constDesc)));
     } else if ((leftExpr instanceof ExprNodeGenericFuncDesc) &&
                (rightExpr instanceof ExprNodeConstantDesc)) {
       v1 = getVectorExpression(leftExpr);
       inputCol = v1.getOutputColumn();
       constDesc = (ExprNodeConstantDesc) rightExpr;
-      expr = (VectorExpression) new FilterStringColLikeStringScalar(inputCol, 
-          new Text((byte[]) getScalarValue(constDesc)));  
+      expr = (VectorExpression) new FilterStringColLikeStringScalar(inputCol,
+          new Text((byte[]) getScalarValue(constDesc)));
     }
-    // TODO add logic to handle cases where left input is an expression. 
+    // TODO add logic to handle cases where left input is an expression.
     if (expr == null) {
       throw new HiveException("Vector LIKE filter expression could not be initialized");
     }
